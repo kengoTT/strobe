@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>iPadストロボ連続撮影カメラ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root {
+      --bg: #050608;
+      --accent: #1e90ff;
+      --text: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #202532 0, #050608 50%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      backdrop-filter: blur(12px);
+      background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.75),
+        rgba(0, 0, 0, 0.1)
+      );
+      z-index: 2;
+    }
+
+    header h1 {
+      font-size: 1.1rem;
+      margin: 0;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.85;
+    }
+
+    header small {
+      font-size: 0.75rem;
+      opacity: 0.7;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 0.75rem;
+      gap: 0.75rem;
+    }
+
+    .camera-area {
+      position: relative;
+      flex: 1;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+    }
+
+    .controls {
+      position: absolute;
+      bottom: 0.75rem;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      padding: 0 0.75rem;
+    }
+
+    .controls-inner {
+      padding: 0.5rem 0.75rem;
+      border-radius: 999px;
+      backdrop-filter: blur(18px);
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      width: 100%;
+      max-width: 520px;
+      margin: 0 auto;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 0.55rem 1.1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: transform 0.08s ease-out, box-shadow 0.08s ease-out,
+        background 0.1s ease-out, opacity 0.1s ease-out;
+      white-space: nowrap;
+    }
+
+    button:active {
+      transform: scale(0.96);
+      box-shadow: none;
+    }
+
+    .btn-primary {
+      background: radial-gradient(circle at top, #5fb3ff, var(--accent));
+      color: #fff;
+      box-shadow: 0 8px 20px rgba(30, 144, 255, 0.4);
+      flex: 1 1 auto;
+      justify-content: center;
+      min-width: 130px;
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      box-shadow: none;
+      cursor: default;
+    }
+
+    .btn-capture {
+      width: 52px;
+      height: 52px;
+      padding: 0;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      background: radial-gradient(circle at top, #ffffff, #dddddd);
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
+      flex: 0 0 auto;
+    }
+
+    .btn-capture-inner {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 0, 0, 0.18);
+      background: rgba(255, 255, 255, 0.9);
+      margin: auto;
+    }
+
+    .btn-burst {
+      background: radial-gradient(circle at top, #ffd05f, #ff9f1e);
+      color: #111;
+      box-shadow: 0 8px 20px rgba(255, 159, 30, 0.45);
+      flex: 1 1 auto;
+      justify-content: center;
+      min-width: 150px;
+    }
+
+    .btn-burst:disabled {
+      opacity: 0.5;
+      box-shadow: none;
+      cursor: default;
+    }
+
+    .status {
+      font-size: 0.8rem;
+      opacity: 0.8;
+      margin-top: 0.25rem;
+      padding: 0 0.15rem;
+    }
+
+    .status.error {
+      color: #ffb3b3;
+    }
+
+    .flash-overlay {
+      position: fixed;
+      inset: 0;
+      background: #ffffff;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 999;
+    }
+
+    .flash-overlay.active {
+      animation: flash 0.18s ease-out;
+    }
+
+    @keyframes flash {
+      0% { opacity: 0; }
+      20% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    .bottom-panel {
+      padding: 0.25rem 0.25rem 0.75rem;
+    }
+
+    .thumb-wrapper {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .thumb-card {
+      flex: 0 0 45%;
+      max-width: 260px;
+      border-radius: 16px;
+      overflow: hidden;
+      background: rgba(15, 15, 18, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.7);
+    }
+
+    .thumb-card-header {
+      padding: 0.4rem 0.65rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 0.7rem;
+      opacity: 0.9;
+    }
+
+    .thumb-card-header span.dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #4cd964;
+      box-shadow: 0 0 6px rgba(76, 217, 100, 0.9);
+    }
+
+    .thumb-card img {
+      width: 100%;
+      display: block;
+    }
+
+    .thumb-empty {
+      padding: 1.2rem 0.8rem 1rem;
+      font-size: 0.8rem;
+      opacity: 0.75;
+    }
+
+    .thumb-empty span {
+      display: block;
+      font-size: 0.7rem;
+      opacity: 0.6;
+      margin-top: 0.25rem;
+    }
+
+    .burst-info {
+      font-size: 0.75rem;
+      opacity: 0.7;
+      margin-top: 0.3rem;
+    }
+
+    @media (orientation: landscape) and (min-width: 900px) {
+      main {
+        flex-direction: row;
+      }
+
+      .camera-area {
+        flex: 2;
+      }
+
+      .bottom-panel {
+        flex: 1;
+        padding-left: 0.5rem;
+        display: flex;
+        align-items: stretch;
+      }
+
+      .thumb-wrapper {
+        flex-direction: column;
+      }
+
+      .thumb-card {
+        flex: 0 0 auto;
+        width: 100%;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>STROBE CAM</h1>
+        <small>Multi-frame Strobe · Web Demo</small>
+      </div>
+      <small>HTTPS &amp; カメラ許可が必要</small>
+    </header>
+
+    <main>
+      <section class="camera-area">
+        <video
+          id="preview"
+          autoplay
+          playsinline
+          muted
+        ></video>
+
+        <div class="controls">
+          <div class="controls-inner">
+            <button id="start" class="btn-primary">
+              カメラ開始
+            </button>
+
+            <button id="capture" class="btn-capture" disabled>
+              <div class="btn-capture-inner"></div>
+            </button>
+
+            <button id="burst" class="btn-burst" disabled>
+              連続ストロボ撮影
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="bottom-panel">
+        <div class="thumb-wrapper">
+          <div class="thumb-card">
+            <div class="thumb-card-header">
+              <span>Last Shot (Single)</span>
+              <span class="dot"></span>
+            </div>
+            <img id="photoSingle" alt="単発の写真" />
+            <div id="emptySingle" class="thumb-empty">
+              単発撮影の写真がここに表示されます。
+              <span>中央の丸いボタンで1枚撮影。</span>
+            </div>
+          </div>
+
+          <div class="thumb-card">
+            <div class="thumb-card-header">
+              <span>Strobe Composite</span>
+              <span class="dot"></span>
+            </div>
+            <img id="photoComposite" alt="ストロボ合成写真" />
+            <div id="emptyComposite" class="thumb-empty">
+              連続撮影して合成されたストロボ写真がここに表示されます。
+              <span>「連続ストロボ撮影」で動きながら撮影してください。</span>
+            </div>
+          </div>
+        </div>
+        <div class="burst-info">
+          ※合成は、複数フレームを半透明で重ねることで「残像」のようなストロボ表現にしています。
+        </div>
+      </section>
+    </main>
+
+    <div id="flash" class="flash-overlay"></div>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById("start");
+    const captureBtn = document.getElementById("capture");
+    const burstBtn = document.getElementById("burst");
+    const video = document.getElementById("preview");
+    const photoSingle = document.getElementById("photoSingle");
+    const photoComposite = document.getElementById("photoComposite");
+    const flash = document.getElementById("flash");
+    const emptySingle = document.getElementById("emptySingle");
+    const emptyComposite = document.getElementById("emptyComposite");
+
+    let stream = null;
+    let isBurstShooting = false;
+
+    async function startCamera() {
+      try {
+        startBtn.disabled = true;
+        startBtn.textContent = "起動中…";
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" }, // 背面カメラ優先
+          },
+          audio: false,
+        });
+
+        video.srcObject = stream;
+        await video.play();
+
+        startBtn.textContent = "カメラ起動中";
+        captureBtn.disabled = false;
+        burstBtn.disabled = false;
+      } catch (err) {
+        console.error(err);
+        alert(
+          "カメラにアクセスできませんでした。\nSafariのカメラ許可とHTTPS接続を確認してください。"
+        );
+        startBtn.disabled = false;
+        startBtn.textContent = "カメラ開始";
+      }
+    }
+
+    function triggerFlash() {
+      flash.classList.add("active");
+      flash.addEventListener(
+        "animationend",
+        () => {
+          flash.classList.remove("active");
+        },
+        { once: true }
+      );
+    }
+
+    function takeFrame() {
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
+
+      if (!videoWidth || !videoHeight) return null;
+
+      // 解像度を抑えめに（処理負荷軽減）
+      const maxWidth = 960;
+      const scale = Math.min(1, maxWidth / videoWidth);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = videoWidth * scale;
+      canvas.height = videoHeight * scale;
+      const ctx = canvas.getContext("2d");
+
+      ctx.drawImage(
+        video,
+        0,
+        0,
+        videoWidth,
+        videoHeight,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+      return canvas;
+    }
+
+    // 単発撮影
+    function capturePhoto() {
+      if (!stream) return;
+      const frameCanvas = takeFrame();
+      if (!frameCanvas) return;
+
+      triggerFlash();
+
+      const dataUrl = frameCanvas.toDataURL("image/png");
+      photoSingle.src = dataUrl;
+      emptySingle.style.display = "none";
+    }
+
+    // 連続撮影して合成
+    async function burstCapture() {
+      if (!stream || isBurstShooting) return;
+
+      isBurstShooting = true;
+      burstBtn.disabled = true;
+      captureBtn.disabled = true;
+      burstBtn.textContent = "撮影中…";
+
+      const frameCount = 6;      // 撮る枚数
+      const intervalMs = 120;    // 撮影間隔（ミリ秒）
+
+      const frames = [];
+
+      triggerFlash(); // 撮影開始とともに1回フラッシュ
+
+      for (let i = 0; i < frameCount; i++) {
+        const frameCanvas = takeFrame();
+        if (frameCanvas) {
+          frames.push(frameCanvas);
+        }
+        await new Promise((r) => setTimeout(r, intervalMs));
+      }
+
+      if (frames.length === 0) {
+        alert("フレームが取得できませんでした。もう一度試してください。");
+        resetBurstState();
+        return;
+      }
+
+      // 合成用キャンバス
+      const base = frames[0];
+      const compositeCanvas = document.createElement("canvas");
+      compositeCanvas.width = base.width;
+      compositeCanvas.height = base.height;
+      const ctx = compositeCanvas.getContext("2d");
+
+      // 背景を少し暗くしてから順番に重ねる
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.fillRect(0, 0, compositeCanvas.width, compositeCanvas.height);
+
+      const n = frames.length;
+      frames.forEach((frame, index) => {
+        // 後のフレームほど少し濃くする
+        const alpha = 0.18 + (index / Math.max(1, n - 1)) * 0.35; // 0.18〜0.53くらい
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(frame, 0, 0);
+      });
+
+      ctx.globalAlpha = 1;
+
+      const compositeDataUrl = compositeCanvas.toDataURL("image/png");
+      photoComposite.src = compositeDataUrl;
+      emptyComposite.style.display = "none";
+
+      resetBurstState();
+    }
+
+    function resetBurstState() {
+      isBurstShooting = false;
+      burstBtn.disabled = false;
+      captureBtn.disabled = false;
+      burstBtn.textContent = "連続ストロボ撮影";
+    }
+
+    startBtn.addEventListener("click", startCamera);
+    captureBtn.addEventListener("click", capturePhoto);
+    burstBtn.addEventListener("click", burstCapture);
+
+    // ページ離脱時にカメラ停止
+    window.addEventListener("beforeunload", () => {
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    });
+  </script>
+</body>
+</html>
