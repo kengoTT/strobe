@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>iPadストロボ連続撮影カメラ</title>
+  <title>iPadストロボ連続撮影カメラ（時間・間隔設定付き）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     :root {
@@ -92,17 +92,23 @@
 
     .controls-inner {
       padding: 0.5rem 0.75rem;
-      border-radius: 999px;
+      border-radius: 16px;
       backdrop-filter: blur(18px);
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(0, 0, 0, 0.55);
       display: flex;
-      gap: 0.6rem;
-      align-items: center;
+      flex-direction: column;
+      gap: 0.45rem;
       width: 100%;
-      max-width: 520px;
+      max-width: 540px;
       margin: 0 auto;
       border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .controls-row {
+      display: flex;
+      gap: 0.6rem;
       flex-wrap: wrap;
+      align-items: center;
       justify-content: center;
     }
 
@@ -178,15 +184,48 @@
       cursor: default;
     }
 
-    .status {
-      font-size: 0.8rem;
-      opacity: 0.8;
-      margin-top: 0.25rem;
-      padding: 0 0.15rem;
+    .config-row {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      opacity: 0.9;
     }
 
-    .status.error {
-      color: #ffb3b3;
+    .config-item {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .config-item label {
+      white-space: nowrap;
+    }
+
+    .config-item input {
+      width: 4.2rem;
+      padding: 0.18rem 0.35rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      font-size: 0.75rem;
+      text-align: right;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .config-item span.unit {
+      opacity: 0.7;
+    }
+
+    .frame-info {
+      font-size: 0.7rem;
+      opacity: 0.75;
+      text-align: right;
+      flex: 1;
     }
 
     .flash-overlay {
@@ -320,17 +359,52 @@
 
         <div class="controls">
           <div class="controls-inner">
-            <button id="start" class="btn-primary">
-              カメラ開始
-            </button>
+            <div class="controls-row">
+              <button id="start" class="btn-primary">
+                カメラ開始
+              </button>
 
-            <button id="capture" class="btn-capture" disabled>
-              <div class="btn-capture-inner"></div>
-            </button>
+              <button id="capture" class="btn-capture" disabled>
+                <div class="btn-capture-inner"></div>
+              </button>
 
-            <button id="burst" class="btn-burst" disabled>
-              連続ストロボ撮影
-            </button>
+              <button id="burst" class="btn-burst" disabled>
+                連続ストロボ撮影
+              </button>
+            </div>
+
+            <!-- ここが「撮影時間」「撮影間隔」の設定エリア -->
+            <div class="config-row">
+              <div class="config-item">
+                <label for="durationInput">撮影時間</label>
+                <input
+                  id="durationInput"
+                  type="number"
+                  min="0.2"
+                  max="5"
+                  step="0.1"
+                  value="1.0"
+                />
+                <span class="unit">秒</span>
+              </div>
+
+              <div class="config-item">
+                <label for="intervalInput">撮影間隔</label>
+                <input
+                  id="intervalInput"
+                  type="number"
+                  min="30"
+                  max="1000"
+                  step="10"
+                  value="120"
+                />
+                <span class="unit">ミリ秒</span>
+              </div>
+
+              <div class="frame-info" id="frameInfo">
+                およそ 1.0 秒 / 120 ms ≒ 8 フレーム
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -362,7 +436,7 @@
           </div>
         </div>
         <div class="burst-info">
-          ※合成は、複数フレームを半透明で重ねることで「残像」のようなストロボ表現にしています。
+          ※「撮影時間」と「撮影間隔」からフレーム数を計算して、複数フレームを半透明で重ねたストロボ合成を行います。
         </div>
       </section>
     </main>
@@ -380,6 +454,10 @@
     const flash = document.getElementById("flash");
     const emptySingle = document.getElementById("emptySingle");
     const emptyComposite = document.getElementById("emptyComposite");
+
+    const durationInput = document.getElementById("durationInput");
+    const intervalInput = document.getElementById("intervalInput");
+    const frameInfo = document.getElementById("frameInfo");
 
     let stream = null;
     let isBurstShooting = false;
@@ -465,17 +543,41 @@
       emptySingle.style.display = "none";
     }
 
+    // 撮影時間・間隔からフレーム数を計算
+    function calcFrameCount(durationSec, intervalMs) {
+      const totalMs = durationSec * 1000;
+      const raw = Math.floor(totalMs / intervalMs);
+      return Math.max(2, raw); // 最低2枚
+    }
+
+    function updateFrameInfo() {
+      const durationSec = Math.max(0.2, parseFloat(durationInput.value) || 1.0);
+      const intervalMs = Math.max(30, parseFloat(intervalInput.value) || 120);
+      const frames = calcFrameCount(durationSec, intervalMs);
+      frameInfo.textContent =
+        `およそ ${durationSec.toFixed(1)} 秒 / ${Math.round(intervalMs)} ms ≒ ${frames} フレーム`;
+    }
+
+    durationInput.addEventListener("input", updateFrameInfo);
+    intervalInput.addEventListener("input", updateFrameInfo);
+    updateFrameInfo(); // 初期表示
+
     // 連続撮影して合成
     async function burstCapture() {
       if (!stream || isBurstShooting) return;
+
+      let durationSec = parseFloat(durationInput.value);
+      let intervalMs = parseFloat(intervalInput.value);
+
+      if (!isFinite(durationSec) || durationSec < 0.2) durationSec = 1.0;
+      if (!isFinite(intervalMs) || intervalMs < 30) intervalMs = 120;
+
+      const frameCount = calcFrameCount(durationSec, intervalMs);
 
       isBurstShooting = true;
       burstBtn.disabled = true;
       captureBtn.disabled = true;
       burstBtn.textContent = "撮影中…";
-
-      const frameCount = 6;      // 撮る枚数
-      const intervalMs = 120;    // 撮影間隔（ミリ秒）
 
       const frames = [];
 
